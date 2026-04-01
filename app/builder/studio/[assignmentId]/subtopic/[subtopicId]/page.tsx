@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import SubtopicCourseBuilder from '@/components/builder/SubtopicCourseBuilder'
+import ObjectivesPanel from '@/components/builder/ObjectivesPanel'
 
 export default async function SubtopicStudioPage({
   params,
@@ -43,6 +44,24 @@ export default async function SubtopicStudioPage({
 
   const topic = assignment.topics as any
 
+  // Fetch objectives and filter to those tagged with this subtopic
+  const { data: examTopics } = await supabase
+    .from('exam_topics')
+    .select('objectives, exams ( name )')
+    .eq('topic_id', topic.id)
+
+  const subtopicObjectives = (examTopics ?? []).flatMap((et: any) =>
+    (et.objectives ?? [])
+      .filter((obj: any) => {
+        if (typeof obj === 'string') return true // old format — show all
+        return (obj.subtopic_ids ?? []).includes(subtopicId)
+      })
+      .map((obj: any) => ({
+        exam:      et.exams?.name ?? '',
+        objective: typeof obj === 'string' ? obj : obj.text,
+      }))
+  )
+
   return (
     <div>
       <div className="flex items-center gap-2 text-xs text-gray-400 mb-6 flex-wrap">
@@ -77,6 +96,12 @@ export default async function SubtopicStudioPage({
           {topic?.name} · {topic?.subjects?.name}
         </p>
       </div>
+
+      {subtopicObjectives.length > 0 && (
+        <div className="mb-6">
+          <ObjectivesPanel objectives={subtopicObjectives} />
+        </div>
+      )}
 
       <SubtopicCourseBuilder
         assignmentId={assignmentId}

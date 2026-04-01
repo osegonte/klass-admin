@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -34,10 +35,10 @@ export default function LoginPage() {
       .eq('id', user.id)
       .single()
 
-    if (teacher?.role === 'admin')       router.push('/admin')
+    if (teacher?.role === 'admin')            router.push('/admin')
     else if (teacher?.role === 'coordinator') router.push('/coordinator')
     else if (teacher?.role === 'builder')     router.push('/builder')
-    else router.push('/')
+    else                                      router.push('/pending')
   }
 
   return (
@@ -98,6 +99,14 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
+
+        <p className="text-xs text-gray-400 text-center mt-4">
+          No account?{' '}
+          <Link href="/signup" className="text-gray-900 underline underline-offset-2">
+            Request access
+          </Link>
+        </p>
+
       </div>
     </div>
   )

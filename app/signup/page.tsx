@@ -37,7 +37,7 @@ export default function SignupPage() {
 
     const { error: insertError } = await supabase
       .from('teachers')
-      .insert({ id: user.id, email, name, role: null })
+      .insert({ id: user.id, email, display_name: name, role: null })
 
     if (insertError) {
       setError(insertError.message)

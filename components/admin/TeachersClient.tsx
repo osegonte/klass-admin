@@ -6,12 +6,12 @@ import { createClient } from '@/lib/supabase/client'
 type Role = 'admin' | 'coordinator' | 'builder'
 
 interface Teacher {
-  id:         string
-  email:      string
-  name:       string
-  role:       Role | null
-  is_active:  boolean
-  created_at: string
+  id:           string
+  email:        string
+  display_name: string
+  role:         Role | null
+  is_active:    boolean
+  created_at:   string
 }
 
 interface Props {
@@ -77,7 +77,7 @@ export default function TeachersClient({ pending: initialPending, active: initia
               <tbody className="divide-y divide-amber-100">
                 {pending.map(teacher => (
                   <tr key={teacher.id} className="bg-white hover:bg-amber-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-900">{teacher.name || '—'}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{teacher.display_name || '—'}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{teacher.email}</td>
                     <td className="px-4 py-3 text-xs text-gray-400">
                       {new Date(teacher.created_at).toLocaleDateString('en-GB', {
@@ -139,7 +139,7 @@ export default function TeachersClient({ pending: initialPending, active: initia
               <tbody className="divide-y divide-gray-100">
                 {active.map(teacher => (
                   <tr key={teacher.id} className="hover:bg-stone-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-900">{teacher.name || '—'}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{teacher.display_name || '—'}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{teacher.email}</td>
                     <td className="px-4 py-3">
                       <select

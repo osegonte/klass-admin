@@ -6,7 +6,7 @@ export default async function TeachersPage() {
 
   const { data: teachers } = await supabase
     .from('teachers')
-    .select('id, email, name, role, is_active, created_at')
+    .select('id, email, display_name, role, is_active, created_at')
     .order('created_at', { ascending: false })
 
   const pending = teachers?.filter(t => !t.role) ?? []

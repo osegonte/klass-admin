@@ -5,11 +5,13 @@ import { createClient } from '@/lib/supabase/client'
 import { Plus, X } from 'lucide-react'
 
 interface Exam      { id: string; name: string }
-interface ExamTopic { exam_id: string; objectives: string[]; exams: any }
+interface Subtopic  { id: string; name: string; subtopic_order: number }
+interface ExamTopic { exam_id: string; objectives: any[]; exams: any }
 
 interface ObjectiveItem {
-  objective: string
-  examIds:   string[]
+  objective:   string
+  examIds:     string[]
+  subtopicIds: string[]
 }
 
 interface Props {
@@ -17,26 +19,27 @@ interface Props {
   subjectId:  string
   examTopics: ExamTopic[]
   exams:      Exam[]
+  subtopics:  Subtopic[]
 }
 
 export default function CoordinatorObjectivesEditor({
-  topicId, subjectId, examTopics, exams,
+  topicId, subjectId, examTopics, exams, subtopics,
 }: Props) {
 
-  // Build a unified list — one item per unique objective text
-  // tagged with which exams it belongs to
   const buildInitial = (): ObjectiveItem[] => {
-    const map = new Map<string, string[]>()
+    const map = new Map<string, ObjectiveItem>()
     for (const et of examTopics) {
       for (const obj of et.objectives ?? []) {
-        if (!map.has(obj)) map.set(obj, [])
-        map.get(obj)!.push(et.exam_id)
+        // Handle both old string[] format and new { text, subtopic_ids }[] format
+        const text        = typeof obj === 'string' ? obj : obj.text
+        const subtopicIds = typeof obj === 'string' ? [] : (obj.subtopic_ids ?? [])
+        if (!map.has(text)) {
+          map.set(text, { objective: text, examIds: [], subtopicIds })
+        }
+        map.get(text)!.examIds.push(et.exam_id)
       }
     }
-    return Array.from(map.entries()).map(([objective, examIds]) => ({
-      objective,
-      examIds,
-    }))
+    return Array.from(map.values())
   }
 
   const [items,  setItems]  = useState<ObjectiveItem[]>(buildInitial)
@@ -45,8 +48,9 @@ export default function CoordinatorObjectivesEditor({
 
   const add = () => {
     setItems(prev => [...prev, {
-      objective: '',
-      examIds:   exams.map(e => e.id), // default to all exams
+      objective:   '',
+      examIds:     exams.map(e => e.id),
+      subtopicIds: [],
     }])
     setSaved(false)
   }
@@ -72,6 +76,32 @@ export default function CoordinatorObjectivesEditor({
     setSaved(false)
   }
 
+  const toggleSubtopic = (index: number, subtopicId: string) => {
+    setItems(prev => prev.map((item, i) => {
+      if (i !== index) return item
+      const has = item.subtopicIds.includes(subtopicId)
+      return {
+        ...item,
+        subtopicIds: has
+          ? item.subtopicIds.filter(id => id !== subtopicId)
+          : [...item.subtopicIds, subtopicId],
+      }
+    }))
+    setSaved(false)
+  }
+
+  const toggleAllSubtopics = (index: number) => {
+    setItems(prev => prev.map((item, i) => {
+      if (i !== index) return item
+      const allOn = subtopics.every(s => item.subtopicIds.includes(s.id))
+      return {
+        ...item,
+        subtopicIds: allOn ? [] : subtopics.map(s => s.id),
+      }
+    }))
+    setSaved(false)
+  }
+
   const remove = (index: number) => {
     setItems(prev => prev.filter((_, i) => i !== index))
     setSaved(false)
@@ -81,19 +111,21 @@ export default function CoordinatorObjectivesEditor({
     setSaving(true)
     const supabase = createClient()
 
-    // Group objectives by exam
-    const byExam: Record<string, string[]> = {}
+    // Group by exam, store as { text, subtopic_ids }[]
+    const byExam: Record<string, any[]> = {}
     for (const exam of exams) byExam[exam.id] = []
 
     for (const item of items) {
       if (!item.objective.trim()) continue
       for (const examId of item.examIds) {
         if (!byExam[examId]) byExam[examId] = []
-        byExam[examId].push(item.objective.trim())
+        byExam[examId].push({
+          text:        item.objective.trim(),
+          subtopic_ids: item.subtopicIds,
+        })
       }
     }
 
-    // Upsert per exam
     for (const [examId, objectives] of Object.entries(byExam)) {
       await supabase
         .from('exam_topics')
@@ -122,8 +154,9 @@ export default function CoordinatorObjectivesEditor({
       {items.map((item, i) => (
         <div
           key={i}
-          className="bg-white border border-gray-200 rounded-lg p-3 flex flex-col gap-2"
+          className="bg-white border border-gray-200 rounded-lg p-3 flex flex-col gap-3"
         >
+          {/* Objective text */}
           <div className="flex items-start gap-2">
             <span className="text-xs text-gray-300 w-5 shrink-0 text-right mt-2.5">
               {i + 1}.
@@ -143,9 +176,9 @@ export default function CoordinatorObjectivesEditor({
             </button>
           </div>
 
-          {/* Exam checkboxes */}
+          {/* Exam tags */}
           <div className="flex items-center gap-3 pl-7">
-            <span className="text-xs text-gray-400 shrink-0">Applies to:</span>
+            <span className="text-xs text-gray-400 shrink-0">Exam:</span>
             <div className="flex items-center gap-2 flex-wrap">
               {exams.map(exam => {
                 const checked = item.examIds.includes(exam.id)
@@ -165,6 +198,55 @@ export default function CoordinatorObjectivesEditor({
               })}
             </div>
           </div>
+
+          {/* Subtopic mapping */}
+          {subtopics.length > 0 && (
+            <div className="pl-7 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Subtopics covered:</span>
+                <button
+                  onClick={() => toggleAllSubtopics(i)}
+                  className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+                >
+                  {subtopics.every(s => item.subtopicIds.includes(s.id))
+                    ? 'Clear all'
+                    : 'Select all'
+                  }
+                </button>
+              </div>
+              <div className="flex flex-col gap-1">
+                {subtopics
+                  .sort((a, b) => a.subtopic_order - b.subtopic_order)
+                  .map(subtopic => {
+                    const checked = item.subtopicIds.includes(subtopic.id)
+                    return (
+                      <label
+                        key={subtopic.id}
+                        className="flex items-center gap-2 cursor-pointer group"
+                      >
+                        <div
+                          onClick={() => toggleSubtopic(i, subtopic.id)}
+                          className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
+                            checked
+                              ? 'bg-gray-900 border-gray-900'
+                              : 'border-gray-300 hover:border-gray-500'
+                          }`}
+                        >
+                          {checked && (
+                            <svg width="7" height="7" viewBox="0 0 8 8" fill="none">
+                              <path d="M1 4L3 6L7 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </div>
+                        <span className={`text-xs leading-snug ${checked ? 'text-gray-800' : 'text-gray-400'}`}>
+                          {subtopic.name}
+                        </span>
+                      </label>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
         </div>
       ))}
 

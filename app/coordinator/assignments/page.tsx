@@ -1,192 +1,114 @@
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
-export default async function AssignmentDetailPage({
-  params,
-}: {
-  params: Promise<{ assignmentId: string }>
-}) {
-  const { assignmentId } = await params
+const STATUS_STYLE: Record<string, string> = {
+  assigned:       'bg-gray-100 text-gray-500',
+  in_progress:    'bg-amber-50 text-amber-700',
+  submitted:      'bg-blue-50 text-blue-700',
+  approved:       'bg-green-50 text-green-700',
+  needs_revision: 'bg-red-50 text-red-600',
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  assigned:       'Assigned',
+  in_progress:    'In Progress',
+  submitted:      'Submitted',
+  approved:       'Approved',
+  needs_revision: 'Needs Revision',
+}
+
+const STATUS_ORDER = ['submitted', 'needs_revision', 'in_progress', 'assigned', 'approved']
+
+export default async function AssignmentsPage() {
   const supabase = await createClient()
 
-  const { data: assignment } = await supabase
+  const { data: assignments } = await supabase
     .from('topic_assignments')
     .select(`
-      id, status, assigned_at, feedback,
+      id, status, assigned_at,
       topics (
-        id, name, subject_id,
-        subjects ( name ),
-        subtopics ( id, name, subtopic_order )
+        id, name,
+        subjects ( name )
       ),
-      exams ( id, name ),
-      teachers!topic_assignments_builder_id_fkey ( display_name, email )
+      exams ( name ),
+      teachers!topic_assignments_builder_id_fkey ( display_name )
     `)
-    .eq('id', assignmentId)
-    .single()
+    .order('assigned_at', { ascending: false })
 
-  if (!assignment) notFound()
+  const grouped: Record<string, typeof assignments> = {}
+  for (const status of STATUS_ORDER) {
+    const items = (assignments ?? []).filter((a: any) => a.status === status)
+    if (items.length > 0) grouped[status] = items
+  }
 
-  const topic    = assignment.topics   as any
-  const exam     = assignment.exams    as any
-  const builder  = assignment.teachers as any
-  const subtopics = (topic?.subtopics ?? [])
-    .sort((a: any, b: any) => a.subtopic_order - b.subtopic_order)
-
-  const { data: submissions } = await supabase
-    .from('subtopic_submissions')
-    .select('id, subtopic_id, status, feedback, submitted_at')
-    .eq('assignment_id', assignmentId)
-
-  const getSubmission = (subtopicId: string) =>
-    submissions?.find(s => s.subtopic_id === subtopicId)
-
-  const topicSubmitted = ['submitted', 'approved', 'needs_revision'].includes(assignment.status)
+  const total      = assignments?.length ?? 0
+  const submitted  = (assignments ?? []).filter((a: any) => a.status === 'submitted').length
+  const needsRevision = (assignments ?? []).filter((a: any) => a.status === 'needs_revision').length
 
   return (
     <div>
-      <div className="flex items-center gap-2 text-xs text-gray-400 mb-6 flex-wrap">
-        <Link href="/coordinator/assignments" className="hover:text-gray-700 transition-colors">
-          Assignments
-        </Link>
-        <span>/</span>
-        <span className="text-gray-900">{topic?.name}</span>
-      </div>
-
       <div className="mb-6 pb-4 border-b border-gray-200 flex items-start justify-between">
         <div>
           <h1 className="text-sm font-semibold tracking-widest uppercase text-gray-900">
-            {topic?.name}
+            Assignments
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            {topic?.subjects?.name} · {exam?.name} · {builder?.display_name}
+            {total} total
+            {submitted > 0 && ` · ${submitted} awaiting review`}
+            {needsRevision > 0 && ` · ${needsRevision} needs revision`}
           </p>
         </div>
-        <span className={`text-xs px-2 py-1 rounded font-medium shrink-0 ${
-          assignment.status === 'approved'       ? 'bg-green-50 text-green-700'  :
-          assignment.status === 'submitted'      ? 'bg-blue-50 text-blue-700'    :
-          assignment.status === 'needs_revision' ? 'bg-red-50 text-red-600'      :
-          assignment.status === 'in_progress'    ? 'bg-amber-50 text-amber-700'  :
-          'bg-gray-100 text-gray-500'
-        }`}>
-          {assignment.status.replace('_', ' ')}
-        </span>
       </div>
 
+      {total === 0 && (
+        <div className="border border-dashed border-gray-300 rounded-lg p-12 text-center">
+          <p className="text-sm text-gray-400">No assignments yet.</p>
+          <p className="text-xs text-gray-400 mt-1">
+            Assign topics to builders from the Syllabus section.
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-col gap-8">
-
-        {/* Topic course */}
-        <section>
-          <div className="mb-3">
-            <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500">
-              Topic Course
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Must be approved before subtopics unlock.
-            </p>
-          </div>
-
-          <div className={`bg-white border rounded-lg px-4 py-3 flex items-center justify-between gap-3 ${
-            assignment.status === 'submitted' ? 'border-blue-200' : 'border-gray-200'
-          }`}>
-            <div>
-              <p className="text-sm font-medium text-gray-900">{topic?.name}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Assigned {new Date(assignment.assigned_at).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className={`text-xs px-2 py-1 rounded font-medium ${
-                assignment.status === 'approved'       ? 'bg-green-50 text-green-700'  :
-                assignment.status === 'submitted'      ? 'bg-blue-50 text-blue-700'    :
-                assignment.status === 'needs_revision' ? 'bg-red-50 text-red-600'      :
-                assignment.status === 'in_progress'    ? 'bg-amber-50 text-amber-700'  :
-                'bg-gray-100 text-gray-500'
-              }`}>
-                {assignment.status.replace('_', ' ')}
+        {STATUS_ORDER.filter(s => grouped[s]).map(status => (
+          <section key={status}>
+            <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500 mb-3">
+              {STATUS_LABEL[status]}
+              <span className="ml-2 text-gray-300 font-normal normal-case">
+                {grouped[status]!.length}
               </span>
-              {topicSubmitted && assignment.status !== 'approved' && (
-                <Link
-                  href={`/coordinator/assignments/${assignmentId}/review/topic`}
-                  className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
-                >
-                  Review
-                </Link>
-              )}
-              {assignment.status === 'approved' && (
-                <Link
-                  href={`/coordinator/assignments/${assignmentId}/review/topic`}
-                  className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
-                >
-                  View →
-                </Link>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* Subtopics */}
-        <section>
-          <div className="mb-3">
-            <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500">
-              Subtopics
             </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Unlock after topic course is approved.
-            </p>
-          </div>
 
-          {subtopics.length === 0 && (
-            <p className="text-xs text-gray-400">No subtopics for this topic.</p>
-          )}
-
-          <div className="flex flex-col gap-2">
-            {subtopics.map((subtopic: any, index: number) => {
-              const submission = getSubmission(subtopic.id)
-              const isLocked   = assignment.status !== 'approved'
-              const status     = submission?.status ?? 'not_started'
-
-              return (
-                <div
-                  key={subtopic.id}
-                  className={`bg-white border rounded-lg px-4 py-3 flex items-center justify-between gap-3 ${
-                    status === 'submitted' ? 'border-blue-200' : 'border-gray-200'
-                  } ${isLocked ? 'opacity-50' : ''}`}
+            <div className="flex flex-col gap-2">
+              {grouped[status]!.map((a: any) => (
+                <Link
+                  key={a.id}
+                  href={`/coordinator/assignments/${a.id}`}
+                  className={`bg-white border rounded-lg px-4 py-3 flex items-center justify-between gap-3 hover:border-gray-400 transition-colors group ${
+                    a.status === 'submitted'      ? 'border-blue-200' :
+                    a.status === 'needs_revision' ? 'border-red-200'  :
+                    'border-gray-200'
+                  }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-xs text-gray-300 tabular-nums shrink-0 w-5">
-                      {index + 1}.
-                    </span>
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {subtopic.name}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {a.topics?.name}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {a.topics?.subjects?.name} · {a.exams?.name} · {a.teachers?.display_name}
                     </p>
                   </div>
-
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs px-2 py-1 rounded font-medium ${
-                      status === 'approved'       ? 'bg-green-50 text-green-700'  :
-                      status === 'submitted'      ? 'bg-blue-50 text-blue-700'    :
-                      status === 'needs_revision' ? 'bg-red-50 text-red-600'      :
-                      status === 'draft'          ? 'bg-amber-50 text-amber-700'  :
-                      'bg-gray-100 text-gray-400'
-                    }`}>
-                      {status === 'not_started' ? 'Not started' : status.replace('_', ' ')}
+                    <span className={`text-xs px-2 py-1 rounded font-medium ${STATUS_STYLE[a.status]}`}>
+                      {STATUS_LABEL[a.status]}
                     </span>
-                    {status === 'submitted' && !isLocked && (
-                      <Link
-                        href={`/coordinator/assignments/${assignmentId}/review/${subtopic.id}`}
-                        className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
-                      >
-                        Review
-                      </Link>
-                    )}
+                    <span className="text-gray-300 group-hover:text-gray-600 transition-colors">→</span>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
+                </Link>
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   )

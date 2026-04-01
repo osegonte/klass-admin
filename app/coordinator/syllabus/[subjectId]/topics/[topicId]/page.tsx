@@ -61,7 +61,6 @@ export default async function CoordinatorTopicPage({
     .eq('topic_id', topicId)
     .order('assigned_at', { ascending: false })
 
-  // Safely parse materials — handles null, string, or object
   const parsedMaterials = (() => {
     if (!topic.materials) return {}
     if (typeof topic.materials === 'string') {
@@ -111,7 +110,7 @@ export default async function CoordinatorTopicPage({
               Objectives
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              All objectives for this topic. Tag each one to the exams it applies to.
+              Set objectives and map each one to the subtopics it covers.
             </p>
           </div>
           <CoordinatorObjectivesEditor
@@ -119,6 +118,7 @@ export default async function CoordinatorTopicPage({
             subjectId={subjectId}
             examTopics={examTopics ?? []}
             exams={exams ?? []}
+            subtopics={subtopics ?? []}
           />
         </section>
 
