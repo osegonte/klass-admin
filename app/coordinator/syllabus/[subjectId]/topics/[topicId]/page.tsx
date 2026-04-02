@@ -71,7 +71,6 @@ export default async function CoordinatorTopicPage({
 
   return (
     <div>
-      {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-gray-400 mb-6 flex-wrap">
         <Link href="/coordinator/syllabus" className="hover:text-gray-700 transition-colors">
           Syllabus
@@ -87,7 +86,6 @@ export default async function CoordinatorTopicPage({
         <span className="text-gray-900">{topic.name}</span>
       </div>
 
-      {/* Header */}
       <div className="mb-6 pb-4 border-b border-gray-200 flex items-start justify-between">
         <div>
           <h1 className="text-sm font-semibold tracking-widest uppercase text-gray-900">
@@ -103,14 +101,13 @@ export default async function CoordinatorTopicPage({
 
       <div className="flex flex-col gap-8">
 
-        {/* Objectives */}
         <section>
           <div className="mb-3">
             <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500">
               Objectives
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              Set objectives and map each one to the subtopics it covers.
+              All objectives for this topic. Tag each one to the exams it applies to.
             </p>
           </div>
           <CoordinatorObjectivesEditor
@@ -118,11 +115,9 @@ export default async function CoordinatorTopicPage({
             subjectId={subjectId}
             examTopics={examTopics ?? []}
             exams={exams ?? []}
-            subtopics={subtopics ?? []}
           />
         </section>
 
-        {/* Materials */}
         <section>
           <div className="mb-3">
             <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500">
@@ -138,7 +133,6 @@ export default async function CoordinatorTopicPage({
           />
         </section>
 
-        {/* Subtopics */}
         <section>
           <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500 mb-3">
             Subtopics ({subtopics?.length ?? 0})
@@ -161,7 +155,6 @@ export default async function CoordinatorTopicPage({
           </div>
         </section>
 
-        {/* Assignments */}
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500">

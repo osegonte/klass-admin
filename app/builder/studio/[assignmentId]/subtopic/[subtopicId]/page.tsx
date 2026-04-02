@@ -44,22 +44,16 @@ export default async function SubtopicStudioPage({
 
   const topic = assignment.topics as any
 
-  // Fetch objectives and filter to those tagged with this subtopic
   const { data: examTopics } = await supabase
     .from('exam_topics')
     .select('objectives, exams ( name )')
     .eq('topic_id', topic.id)
 
-  const subtopicObjectives = (examTopics ?? []).flatMap((et: any) =>
-    (et.objectives ?? [])
-      .filter((obj: any) => {
-        if (typeof obj === 'string') return true // old format — show all
-        return (obj.subtopic_ids ?? []).includes(subtopicId)
-      })
-      .map((obj: any) => ({
-        exam:      et.exams?.name ?? '',
-        objective: typeof obj === 'string' ? obj : obj.text,
-      }))
+  const allObjectives = (examTopics ?? []).flatMap((et: any) =>
+    (et.objectives ?? []).map((obj: any) => ({
+      exam:      et.exams?.name ?? '',
+      objective: typeof obj === 'string' ? obj : obj.text,
+    }))
   )
 
   return (
@@ -97,9 +91,9 @@ export default async function SubtopicStudioPage({
         </p>
       </div>
 
-      {subtopicObjectives.length > 0 && (
+      {allObjectives.length > 0 && (
         <div className="mb-6">
-          <ObjectivesPanel objectives={subtopicObjectives} />
+          <ObjectivesPanel objectives={allObjectives} />
         </div>
       )}
 
