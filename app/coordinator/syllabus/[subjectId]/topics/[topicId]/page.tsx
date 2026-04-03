@@ -69,6 +69,15 @@ export default async function CoordinatorTopicPage({
     return topic.materials
   })()
 
+  // Build exam context for prompt
+  const examNames = (examTopics ?? []).map((et: any) => et.exams?.name).filter(Boolean)
+  const allObjectives = (examTopics ?? []).flatMap((et: any) =>
+    (et.objectives ?? []).map((obj: any) => ({
+      text:     typeof obj === 'string' ? obj : obj.text,
+      examName: et.exams?.name ?? '',
+    }))
+  )
+
   return (
     <div>
       <div className="flex items-center gap-2 text-xs text-gray-400 mb-6 flex-wrap">
@@ -130,6 +139,10 @@ export default async function CoordinatorTopicPage({
           <MaterialsEditor
             topicId={topicId}
             initialValue={parsedMaterials}
+            topicName={topic.name}
+            subjectName={subject.name}
+            examNames={examNames}
+            objectives={allObjectives}
           />
         </section>
 
