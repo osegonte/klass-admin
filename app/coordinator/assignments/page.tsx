@@ -42,8 +42,7 @@ export default async function AssignmentsPage() {
       id, status, assigned_at,
       topics (
         id, name,
-        subjects ( name ),
-        subtopics ( count )
+        subjects ( name )
       ),
       exams ( name ),
       teachers!topic_assignments_builder_id_fkey ( display_name )
@@ -51,6 +50,8 @@ export default async function AssignmentsPage() {
     .order('assigned_at', { ascending: false })
 
   const assignmentIds = (assignments ?? []).map((a: any) => a.id)
+  const topicIds = [...new Set((assignments ?? []).map((a: any) => a.topics?.id).filter(Boolean))]
+
   const { data: submissions } = assignmentIds.length > 0
     ? await supabase
         .from('subtopic_submissions')
@@ -58,8 +59,16 @@ export default async function AssignmentsPage() {
         .in('assignment_id', assignmentIds)
     : { data: [] }
 
+  const { data: subtopicCounts } = topicIds.length > 0
+    ? await supabase
+        .from('subtopics')
+        .select('topic_id')
+        .in('topic_id', topicIds)
+    : { data: [] }
+
   const getProgress = (a: any) => {
-    const subtopicCount = a.topics?.subtopics?.[0]?.count ?? 0
+    const topicId       = a.topics?.id
+    const subtopicCount = (subtopicCounts ?? []).filter((s: any) => s.topic_id === topicId).length
     const total         = 1 + subtopicCount
     const topicDone     = a.status === 'approved' ? 1 : 0
     const subsDone      = (submissions ?? []).filter(

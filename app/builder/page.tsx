@@ -41,16 +41,16 @@ export default async function BuilderQueue() {
       id, status, assigned_at,
       topics (
         id, name,
-        subjects ( name ),
-        subtopics ( count )
+        subjects ( name )
       ),
       exams ( name )
     `)
     .eq('builder_id', user!.id)
     .order('assigned_at', { ascending: false })
 
-  // Fetch all submissions for this builder's assignments
   const assignmentIds = (assignments ?? []).map((a: any) => a.id)
+  const topicIds = [...new Set((assignments ?? []).map((a: any) => a.topics?.id).filter(Boolean))]
+
   const { data: submissions } = assignmentIds.length > 0
     ? await supabase
         .from('subtopic_submissions')
@@ -58,19 +58,35 @@ export default async function BuilderQueue() {
         .in('assignment_id', assignmentIds)
     : { data: [] }
 
+  const { data: subtopicCounts } = topicIds.length > 0
+    ? await supabase
+        .from('subtopics')
+        .select('topic_id')
+        .in('topic_id', topicIds)
+    : { data: [] }
+
   const getProgress = (a: any) => {
-    const subtopicCount = a.topics?.subtopics?.[0]?.count ?? 0
+    const topicId       = a.topics?.id
+    const subtopicCount = (subtopicCounts ?? []).filter((s: any) => s.topic_id === topicId).length
     const total         = 1 + subtopicCount
     const topicDone     = a.status === 'approved' ? 1 : 0
     const subsDone      = (submissions ?? []).filter(
       (s: any) => s.assignment_id === a.id && s.status === 'approved'
     ).length
-    const completed     = topicDone + subsDone
-    return Math.round((completed / total) * 100)
+    return Math.round(((topicDone + subsDone) / total) * 100)
   }
 
   const active    = (assignments ?? []).filter((a: any) => a.status !== 'approved')
-  const completed = (assignments ?? []).filter((a: any) => a.status === 'approved')
+  const completed = (assignments ?? []).filter((a: any) => {
+    const topicId       = a.topics?.id
+    const subtopicCount = (subtopicCounts ?? []).filter((s: any) => s.topic_id === topicId).length
+    const subsDone      = (submissions ?? []).filter(
+      (s: any) => s.assignment_id === a.id && s.status === 'approved'
+    ).length
+    return a.status === 'approved' && subsDone === subtopicCount
+  })
+
+  const inProgress = (assignments ?? []).filter((a: any) => !completed.find((c: any) => c.id === a.id))
 
   return (
     <div>
@@ -79,7 +95,7 @@ export default async function BuilderQueue() {
           My Queue
         </h1>
         <p className="text-xs text-gray-400 mt-1">
-          {active.length} active · {completed.length} completed
+          {inProgress.length} active · {completed.length} completed
         </p>
       </div>
 
@@ -92,9 +108,9 @@ export default async function BuilderQueue() {
         </div>
       )}
 
-      {active.length > 0 && (
+      {inProgress.length > 0 && (
         <div className="flex flex-col gap-2 mb-8">
-          {active.map((a: any) => {
+          {inProgress.map((a: any) => {
             const pct = getProgress(a)
             return (
               <Link
