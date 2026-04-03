@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import ReviewActions from '@/components/coordinator/ReviewActions'
 
-export default async function AssignmentDetailPage({
+export default async function ReviewTopicPage({
   params,
 }: {
   params: Promise<{ assignmentId: string }>
@@ -13,35 +14,43 @@ export default async function AssignmentDetailPage({
   const { data: assignment } = await supabase
     .from('topic_assignments')
     .select(`
-      id, status, assigned_at, feedback,
-      topics (
-        id, name, subject_id,
-        subjects ( name ),
-        subtopics ( id, name, subtopic_order )
-      ),
-      exams ( id, name ),
-      teachers!topic_assignments_builder_id_fkey ( display_name, email )
+      id, status,
+      topics ( id, name, subjects ( name ) ),
+      exams ( name ),
+      teachers!topic_assignments_builder_id_fkey ( display_name )
     `)
     .eq('id', assignmentId)
     .single()
 
   if (!assignment) notFound()
 
-  const topic    = assignment.topics   as any
-  const exam     = assignment.exams    as any
-  const builder  = assignment.teachers as any
-  const subtopics = (topic?.subtopics ?? [])
-    .sort((a: any, b: any) => a.subtopic_order - b.subtopic_order)
+  const topic   = assignment.topics as any
+  const topicId = topic?.id
 
-  const { data: submissions } = await supabase
-    .from('subtopic_submissions')
-    .select('id, subtopic_id, status, feedback, submitted_at')
-    .eq('assignment_id', assignmentId)
+  const { data: blocks } = await supabase
+    .from('content_blocks')
+    .select('*')
+    .eq('topic_id', topicId)
+    .order('block_order')
 
-  const getSubmission = (subtopicId: string) =>
-    submissions?.find(s => s.subtopic_id === subtopicId)
+  const { data: flashcards } = await supabase
+    .from('flashcards')
+    .select('*')
+    .eq('topic_id', topicId)
+    .order('card_order')
 
-  const topicSubmitted = ['submitted', 'approved', 'needs_revision'].includes(assignment.status)
+  const BLOCK_LABEL: Record<string, string> = {
+    definition: 'Definition', explanation: 'Explanation',
+    formula: 'Formula', example: 'Example', keypoint: 'Key Point',
+    note: 'Note', diagram: 'Diagram', table: 'Table',
+  }
+
+  const BLOCK_COLOR: Record<string, string> = {
+    definition: 'border-l-purple-400', explanation: 'border-l-blue-400',
+    formula: 'border-l-amber-400', example: 'border-l-green-400',
+    keypoint: 'border-l-yellow-400', note: 'border-l-gray-300',
+    diagram: 'border-l-teal-400', table: 'border-l-slate-400',
+  }
 
   return (
     <div>
@@ -50,143 +59,105 @@ export default async function AssignmentDetailPage({
           Assignments
         </Link>
         <span>/</span>
-        <span className="text-gray-900">{topic?.name}</span>
+        <Link
+          href={`/coordinator/assignments/${assignmentId}`}
+          className="hover:text-gray-700 transition-colors"
+        >
+          {topic?.name}
+        </Link>
+        <span>/</span>
+        <span className="text-gray-900">Review Course</span>
       </div>
 
-      <div className="mb-6 pb-4 border-b border-gray-200 flex items-start justify-between">
-        <div>
-          <h1 className="text-sm font-semibold tracking-widest uppercase text-gray-900">
-            {topic?.name}
-          </h1>
-          <p className="text-xs text-gray-400 mt-1">
-            {topic?.subjects?.name} · {exam?.name} · {builder?.display_name}
-          </p>
-        </div>
-        <span className={`text-xs px-2 py-1 rounded font-medium shrink-0 ${
-          assignment.status === 'approved'       ? 'bg-green-50 text-green-700'  :
-          assignment.status === 'submitted'      ? 'bg-blue-50 text-blue-700'    :
-          assignment.status === 'needs_revision' ? 'bg-red-50 text-red-600'      :
-          assignment.status === 'in_progress'    ? 'bg-amber-50 text-amber-700'  :
-          'bg-gray-100 text-gray-500'
-        }`}>
-          {assignment.status.replace('_', ' ')}
-        </span>
+      <div className="mb-6 pb-4 border-b border-gray-200">
+        <h1 className="text-sm font-semibold tracking-widest uppercase text-gray-900">
+          {topic?.name}
+        </h1>
+        <p className="text-xs text-gray-400 mt-1">
+          {topic?.subjects?.name} · Built by {(assignment.teachers as any)?.display_name}
+        </p>
       </div>
 
-      <div className="flex flex-col gap-8">
-
-        {/* Topic course */}
-        <section>
-          <div className="mb-3">
-            <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500">
-              Topic Course
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Must be approved before subtopics unlock.
-            </p>
+      <div className="flex flex-col gap-6 mb-8">
+        {(!blocks || blocks.length === 0) && (
+          <div className="border border-dashed border-gray-300 rounded-lg p-10 text-center">
+            <p className="text-sm text-gray-400">No content blocks yet.</p>
           </div>
+        )}
 
-          <div className={`bg-white border rounded-lg px-4 py-3 flex items-center justify-between gap-3 ${
-            assignment.status === 'submitted' ? 'border-blue-200' : 'border-gray-200'
-          }`}>
-            <div>
-              <p className="text-sm font-medium text-gray-900">{topic?.name}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Assigned {new Date(assignment.assigned_at).toLocaleDateString()}
+        {blocks?.map((block: any) => (
+          <div
+            key={block.id}
+            className={`bg-white border border-gray-200 border-l-4 ${BLOCK_COLOR[block.type] ?? 'border-l-gray-200'} rounded-lg p-4`}
+          >
+            <p className="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-2">
+              {BLOCK_LABEL[block.type] ?? block.type}
+            </p>
+            {block.title && (
+              <p className="text-sm font-semibold text-gray-900 mb-1">{block.title}</p>
+            )}
+            {block.body && (
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {block.body}
               </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className={`text-xs px-2 py-1 rounded font-medium ${
-                assignment.status === 'approved'       ? 'bg-green-50 text-green-700'  :
-                assignment.status === 'submitted'      ? 'bg-blue-50 text-blue-700'    :
-                assignment.status === 'needs_revision' ? 'bg-red-50 text-red-600'      :
-                assignment.status === 'in_progress'    ? 'bg-amber-50 text-amber-700'  :
-                'bg-gray-100 text-gray-500'
-              }`}>
-                {assignment.status.replace('_', ' ')}
-              </span>
-              {topicSubmitted && assignment.status !== 'approved' && (
-                <Link
-                  href={`/coordinator/assignments/${assignmentId}/review/topic`}
-                  className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
-                >
-                  Review
-                </Link>
-              )}
-              {assignment.status === 'approved' && (
-                <Link
-                  href={`/coordinator/assignments/${assignmentId}/review/topic`}
-                  className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
-                >
-                  View →
-                </Link>
-              )}
-            </div>
+            )}
+            {block.analogy && (
+              <p className="text-xs text-gray-500 mt-2 italic">Analogy: {block.analogy}</p>
+            )}
+            {block.breakdown && (
+              <p className="text-xs text-gray-500 mt-2">Breakdown: {block.breakdown}</p>
+            )}
+            {block.steps && Array.isArray(block.steps) && block.steps.length > 0 && (
+              <div className="mt-3 flex flex-col gap-2">
+                {block.steps.map((step: any, i: number) => (
+                  <div key={i} className="flex gap-2 text-xs">
+                    <span className="text-gray-300 shrink-0">Step {i + 1}.</span>
+                    <div>
+                      <span className="font-mono text-gray-800">{step.expression}</span>
+                      {step.talkingPoint && (
+                        <span className="text-gray-500 ml-2">— {step.talkingPoint}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </section>
+        ))}
+      </div>
 
-        {/* Subtopics */}
-        <section>
-          <div className="mb-3">
-            <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500">
-              Subtopics
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Unlock after topic course is approved.
-            </p>
-          </div>
-
-          {subtopics.length === 0 && (
-            <p className="text-xs text-gray-400">No subtopics for this topic.</p>
-          )}
-
+      {flashcards && flashcards.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-500 mb-3">
+            Flashcards ({flashcards.length})
+          </h2>
           <div className="flex flex-col gap-2">
-            {subtopics.map((subtopic: any, index: number) => {
-              const submission = getSubmission(subtopic.id)
-              const isLocked   = assignment.status !== 'approved'
-              const status     = submission?.status ?? 'not_started'
-
-              return (
-                <div
-                  key={subtopic.id}
-                  className={`bg-white border rounded-lg px-4 py-3 flex items-center justify-between gap-3 ${
-                    status === 'submitted' ? 'border-blue-200' : 'border-gray-200'
-                  } ${isLocked ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-xs text-gray-300 tabular-nums shrink-0 w-5">
-                      {index + 1}.
-                    </span>
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {subtopic.name}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs px-2 py-1 rounded font-medium ${
-                      status === 'approved'       ? 'bg-green-50 text-green-700'  :
-                      status === 'submitted'      ? 'bg-blue-50 text-blue-700'    :
-                      status === 'needs_revision' ? 'bg-red-50 text-red-600'      :
-                      status === 'draft'          ? 'bg-amber-50 text-amber-700'  :
-                      'bg-gray-100 text-gray-400'
-                    }`}>
-                      {status === 'not_started' ? 'Not started' : status.replace('_', ' ')}
-                    </span>
-                    {status === 'submitted' && !isLocked && (
-                      <Link
-                        href={`/coordinator/assignments/${assignmentId}/review/${subtopic.id}`}
-                        className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
-                      >
-                        Review
-                      </Link>
-                    )}
-                  </div>
+            {flashcards.map((card: any) => (
+              <div
+                key={card.id}
+                className="bg-white border border-gray-200 rounded-lg p-3 grid grid-cols-2 gap-3"
+              >
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Front</p>
+                  <p className="text-sm text-gray-800">{card.front || '—'}</p>
                 </div>
-              )
-            })}
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Back</p>
+                  <p className="text-sm text-gray-800">{card.back || '—'}</p>
+                </div>
+              </div>
+            ))}
           </div>
-        </section>
+        </div>
+      )}
 
+      <div className="sticky bottom-0 bg-stone-50 border-t border-gray-200 pt-4 pb-6">
+        <ReviewActions
+          assignmentId={assignmentId}
+          subtopicId={null}
+          isTopicLevel={true}
+          currentStatus={assignment.status}
+        />
       </div>
     </div>
   )
