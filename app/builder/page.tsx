@@ -17,6 +17,20 @@ const STATUS_LABEL: Record<string, string> = {
   needs_revision: 'Needs Revision',
 }
 
+function ProgressBar({ pct }: { pct: number }) {
+  return (
+    <div className="flex items-center gap-2 mt-1.5">
+      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-gray-900 rounded-full transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-xs text-gray-400 tabular-nums shrink-0">{pct}%</span>
+    </div>
+  )
+}
+
 export default async function BuilderQueue() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -27,19 +41,36 @@ export default async function BuilderQueue() {
       id, status, assigned_at,
       topics (
         id, name,
-        subjects ( name )
+        subjects ( name ),
+        subtopics ( count )
       ),
       exams ( name )
     `)
     .eq('builder_id', user!.id)
     .order('assigned_at', { ascending: false })
 
-  const active   = (assignments ?? []).filter((a: any) =>
-    !['approved'].includes(a.status)
-  )
-  const completed = (assignments ?? []).filter((a: any) =>
-    a.status === 'approved'
-  )
+  // Fetch all submissions for this builder's assignments
+  const assignmentIds = (assignments ?? []).map((a: any) => a.id)
+  const { data: submissions } = assignmentIds.length > 0
+    ? await supabase
+        .from('subtopic_submissions')
+        .select('assignment_id, status')
+        .in('assignment_id', assignmentIds)
+    : { data: [] }
+
+  const getProgress = (a: any) => {
+    const subtopicCount = a.topics?.subtopics?.[0]?.count ?? 0
+    const total         = 1 + subtopicCount
+    const topicDone     = a.status === 'approved' ? 1 : 0
+    const subsDone      = (submissions ?? []).filter(
+      (s: any) => s.assignment_id === a.id && s.status === 'approved'
+    ).length
+    const completed     = topicDone + subsDone
+    return Math.round((completed / total) * 100)
+  }
+
+  const active    = (assignments ?? []).filter((a: any) => a.status !== 'approved')
+  const completed = (assignments ?? []).filter((a: any) => a.status === 'approved')
 
   return (
     <div>
@@ -61,46 +92,46 @@ export default async function BuilderQueue() {
         </div>
       )}
 
-      {/* Active assignments */}
       {active.length > 0 && (
         <div className="flex flex-col gap-2 mb-8">
-          {active.map((a: any) => (
-            <Link
-              key={a.id}
-              href={`/builder/studio/${a.id}`}
-              className={`bg-white border rounded-lg px-4 py-4 flex items-center justify-between gap-3 hover:border-gray-400 transition-colors group ${
-                a.status === 'needs_revision'
-                  ? 'border-red-200'
-                  : 'border-gray-200'
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-gray-900 truncate">
-                  {a.topics?.name}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {a.topics?.subjects?.name} · {a.exams?.name}
-                </p>
-                {a.status === 'needs_revision' && (
-                  <p className="text-xs text-red-500 mt-1 font-medium">
-                    Coordinator sent feedback — revision needed
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className={`text-xs px-2 py-1 rounded font-medium ${STATUS_STYLE[a.status]}`}>
-                  {STATUS_LABEL[a.status]}
-                </span>
-                <span className="text-gray-300 group-hover:text-gray-600 transition-colors">
-                  →
-                </span>
-              </div>
-            </Link>
-          ))}
+          {active.map((a: any) => {
+            const pct = getProgress(a)
+            return (
+              <Link
+                key={a.id}
+                href={`/builder/studio/${a.id}`}
+                className={`bg-white border rounded-lg px-4 py-4 hover:border-gray-400 transition-colors group ${
+                  a.status === 'needs_revision' ? 'border-red-200' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {a.topics?.name}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {a.topics?.subjects?.name} · {a.exams?.name}
+                    </p>
+                    {a.status === 'needs_revision' && (
+                      <p className="text-xs text-red-500 mt-1 font-medium">
+                        Coordinator sent feedback — revision needed
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-xs px-2 py-1 rounded font-medium ${STATUS_STYLE[a.status]}`}>
+                      {STATUS_LABEL[a.status]}
+                    </span>
+                    <span className="text-gray-300 group-hover:text-gray-600 transition-colors">→</span>
+                  </div>
+                </div>
+                <ProgressBar pct={pct} />
+              </Link>
+            )
+          })}
         </div>
       )}
 
-      {/* Completed */}
       {completed.length > 0 && (
         <div>
           <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-3">
@@ -122,7 +153,7 @@ export default async function BuilderQueue() {
                   </p>
                 </div>
                 <span className="text-xs px-2 py-1 rounded font-medium bg-green-50 text-green-700 shrink-0">
-                  Approved
+                  100%
                 </span>
               </Link>
             ))}

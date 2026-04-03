@@ -19,6 +19,20 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_ORDER = ['submitted', 'needs_revision', 'in_progress', 'assigned', 'approved']
 
+function ProgressBar({ pct }: { pct: number }) {
+  return (
+    <div className="flex items-center gap-2 mt-1.5">
+      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-gray-900 rounded-full transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-xs text-gray-400 tabular-nums shrink-0">{pct}%</span>
+    </div>
+  )
+}
+
 export default async function AssignmentsPage() {
   const supabase = await createClient()
 
@@ -28,12 +42,31 @@ export default async function AssignmentsPage() {
       id, status, assigned_at,
       topics (
         id, name,
-        subjects ( name )
+        subjects ( name ),
+        subtopics ( count )
       ),
       exams ( name ),
       teachers!topic_assignments_builder_id_fkey ( display_name )
     `)
     .order('assigned_at', { ascending: false })
+
+  const assignmentIds = (assignments ?? []).map((a: any) => a.id)
+  const { data: submissions } = assignmentIds.length > 0
+    ? await supabase
+        .from('subtopic_submissions')
+        .select('assignment_id, status')
+        .in('assignment_id', assignmentIds)
+    : { data: [] }
+
+  const getProgress = (a: any) => {
+    const subtopicCount = a.topics?.subtopics?.[0]?.count ?? 0
+    const total         = 1 + subtopicCount
+    const topicDone     = a.status === 'approved' ? 1 : 0
+    const subsDone      = (submissions ?? []).filter(
+      (s: any) => s.assignment_id === a.id && s.status === 'approved'
+    ).length
+    return Math.round(((topicDone + subsDone) / total) * 100)
+  }
 
   const grouped: Record<string, typeof assignments> = {}
   for (const status of STATUS_ORDER) {
@@ -41,23 +74,21 @@ export default async function AssignmentsPage() {
     if (items.length > 0) grouped[status] = items
   }
 
-  const total      = assignments?.length ?? 0
-  const submitted  = (assignments ?? []).filter((a: any) => a.status === 'submitted').length
+  const total         = assignments?.length ?? 0
+  const submitted     = (assignments ?? []).filter((a: any) => a.status === 'submitted').length
   const needsRevision = (assignments ?? []).filter((a: any) => a.status === 'needs_revision').length
 
   return (
     <div>
-      <div className="mb-6 pb-4 border-b border-gray-200 flex items-start justify-between">
-        <div>
-          <h1 className="text-sm font-semibold tracking-widest uppercase text-gray-900">
-            Assignments
-          </h1>
-          <p className="text-xs text-gray-400 mt-1">
-            {total} total
-            {submitted > 0 && ` · ${submitted} awaiting review`}
-            {needsRevision > 0 && ` · ${needsRevision} needs revision`}
-          </p>
-        </div>
+      <div className="mb-6 pb-4 border-b border-gray-200">
+        <h1 className="text-sm font-semibold tracking-widest uppercase text-gray-900">
+          Assignments
+        </h1>
+        <p className="text-xs text-gray-400 mt-1">
+          {total} total
+          {submitted > 0 && ` · ${submitted} awaiting review`}
+          {needsRevision > 0 && ` · ${needsRevision} needs revision`}
+        </p>
       </div>
 
       {total === 0 && (
@@ -80,32 +111,38 @@ export default async function AssignmentsPage() {
             </h2>
 
             <div className="flex flex-col gap-2">
-              {grouped[status]!.map((a: any) => (
-                <Link
-                  key={a.id}
-                  href={`/coordinator/assignments/${a.id}`}
-                  className={`bg-white border rounded-lg px-4 py-3 flex items-center justify-between gap-3 hover:border-gray-400 transition-colors group ${
-                    a.status === 'submitted'      ? 'border-blue-200' :
-                    a.status === 'needs_revision' ? 'border-red-200'  :
-                    'border-gray-200'
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {a.topics?.name}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {a.topics?.subjects?.name} · {a.exams?.name} · {a.teachers?.display_name}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs px-2 py-1 rounded font-medium ${STATUS_STYLE[a.status]}`}>
-                      {STATUS_LABEL[a.status]}
-                    </span>
-                    <span className="text-gray-300 group-hover:text-gray-600 transition-colors">→</span>
-                  </div>
-                </Link>
-              ))}
+              {grouped[status]!.map((a: any) => {
+                const pct = getProgress(a)
+                return (
+                  <Link
+                    key={a.id}
+                    href={`/coordinator/assignments/${a.id}`}
+                    className={`bg-white border rounded-lg px-4 py-3 hover:border-gray-400 transition-colors group ${
+                      a.status === 'submitted'      ? 'border-blue-200' :
+                      a.status === 'needs_revision' ? 'border-red-200'  :
+                      'border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-gray-900 truncate">
+                          {a.topics?.name}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {a.topics?.subjects?.name} · {a.exams?.name} · {a.teachers?.display_name}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-xs px-2 py-1 rounded font-medium ${STATUS_STYLE[a.status]}`}>
+                          {STATUS_LABEL[a.status]}
+                        </span>
+                        <span className="text-gray-300 group-hover:text-gray-600 transition-colors">→</span>
+                      </div>
+                    </div>
+                    <ProgressBar pct={pct} />
+                  </Link>
+                )
+              })}
             </div>
           </section>
         ))}
