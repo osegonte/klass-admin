@@ -53,157 +53,145 @@ const SECTIONS = [
 ]
 
 function buildPrompt(
-  topicName:    string,
-  subjectName:  string,
-  examNames:    string[],
-  objectives:   Objective[],
-  materials:    Materials,
-  batch:        1 | 2 | null,
+  topicName:   string,
+  subjectName: string,
+  examNames:   string[],
+  objectives:  Objective[],
+  materials:   Materials,
 ): string {
-  const examContext = examNames.length > 0
-    ? examNames.join(' and ')
-    : 'Nigerian secondary school'
-
+  const examContext = examNames.length > 0 ? examNames.join(' and ') : 'Nigerian secondary school'
   const isWAEC = examNames.some(e => e.toLowerCase().includes('waec'))
   const isJAMB = examNames.some(e => e.toLowerCase().includes('jamb'))
 
   const examStyle = isWAEC && isJAMB
-    ? 'Both WAEC (essay and structured questions) and JAMB (multiple choice) exam styles apply.'
-    : isWAEC
-    ? 'WAEC exam style applies — include both essay and structured questions.'
-    : isJAMB
-    ? 'JAMB exam style applies — multiple choice questions only.'
-    : 'Nigerian secondary school exam style applies.'
+    ? 'Both WAEC (essay/structured) and JAMB (multiple choice) exam styles apply.'
+    : isWAEC ? 'WAEC exam style — essay and structured questions.'
+    : isJAMB ? 'JAMB exam style — multiple choice only.'
+    : 'Nigerian secondary school exam style.'
 
   const objectiveLines = objectives.length > 0
     ? objectives.map((o, i) => `${i + 1}. ${o.text}${o.examName ? ` [${o.examName}]` : ''}`).join('\n')
-    : 'No objectives set yet.'
+    : 'No objectives set yet — use your knowledge of this topic for this exam level.'
 
   const hasTextbook      = !!materials.textbook?.trim()
   const hasTranscript    = !!materials.transcript?.trim()
   const hasPastQuestions = !!materials.past_questions?.trim()
   const hasExtra         = !!materials.extra?.trim()
 
-  const batchNote = batch === 1
-    ? '\n\n⚠️ THIS IS BATCH 1 OF 2. Read and absorb this context only. Do NOT produce any output yet. Wait for Batch 2 before responding.\n'
-    : batch === 2
-    ? '\n\n⚠️ THIS IS BATCH 2 OF 2. You now have all the context. Produce the full output as instructed below.\n'
-    : ''
+  const skipped = [
+    hasTextbook      && 'Textbook Notes',
+    hasTranscript    && 'YouTube Recommendations',
+    hasPastQuestions && 'Past Questions',
+    hasExtra         && 'Extra Notes',
+  ].filter(Boolean)
 
-  const sections: string[] = []
+  const needed = [
+    !hasTextbook      && 'Textbook Notes',
+    !hasTranscript    && 'YouTube Recommendations',
+    !hasPastQuestions && 'Past Questions',
+    !hasExtra         && 'Extra Notes',
+  ].filter(Boolean)
 
-  sections.push(`# KLASS Studio — Materials Research Request
-## Topic: ${topicName}
-## Subject: ${subjectName}
-## Exam Context: ${examContext}
-## ${examStyle}
+  if (needed.length === 0) {
+    return `All materials for "${topicName}" are already filled. Nothing to generate.`
+  }
 
-### Learning Objectives
-These are what students must be able to do after studying this topic:
+  return `You are a senior ${examContext} curriculum specialist and subject matter expert. Your task is to produce high-quality reference materials for a course on the following topic.
+
+---
+
+## TOPIC: ${topicName}
+## SUBJECT: ${subjectName}
+## EXAM CONTEXT: ${examContext}
+## EXAM STYLE: ${examStyle}
+
+---
+
+## LEARNING OBJECTIVES
+Students must be able to:
 ${objectiveLines}
 
-### Rules
-- Stay strictly within the scope of the objectives above
-- Do not introduce concepts beyond what the objectives require
-- All content must be accurate for Nigerian secondary school level
-- Use clear, simple language appropriate for SS1–SS3 students
-- Do not plagiarise — synthesise from your training knowledge${batchNote}`)
+---
 
-  // TEXTBOOK section
-  if (!hasTextbook) {
-    sections.push(`---
+## YOUR TASK
+
+Produce the following materials in one response, clearly separated by the section headings below. Every section must directly serve the objectives listed above — do not stray outside their scope.
+
+${skipped.length > 0 ? `The following sections are already filled and do NOT need to be produced:\n${(skipped as string[]).map(s => `- ${s}`).join('\n')}\n` : ''}Think deeply. Draw on your full knowledge of ${subjectName} at ${examContext} level. Be comprehensive but focused. Everything must be accurate, pedagogically sound, and exam-relevant.
+
+---
+${!hasTextbook ? `
 ## SECTION 1: TEXTBOOK NOTES
 
-Write comprehensive textbook-style notes for "${topicName}" covering all the objectives listed above.
+Write comprehensive, well-structured textbook notes covering every objective above. This is the primary reference material builders will use to create the course.
 
-Format:
-- Use markdown headings (##, ###)
-- Write in flowing prose — not bullet points
-- Cover every objective systematically
-- Include definitions, explanations, and examples
-- End with a summary paragraph
+Requirements:
+- Prose paragraphs, not bullet points — write like a textbook
+- Use markdown headings to organise by sub-topic or concept
+- Define every key term clearly on first use
+- Explain the why and the how, not just the what
+- Include worked examples where relevant
+- Cover every objective — do not skip any
+- Appropriate depth for SS1–SS3 Nigerian secondary school students
+- End with a one-paragraph summary of the topic
 
-Output the textbook notes in a markdown code block.`)
-  } else {
-    sections.push(`---
-## SECTION 1: TEXTBOOK NOTES
-✅ Already provided. No action needed for this section.`)
-  }
-
-  // TRANSCRIPT section
-  if (!hasTranscript) {
-    sections.push(`---
+` : ''}${!hasTranscript ? `
 ## SECTION 2: YOUTUBE VIDEO RECOMMENDATIONS
 
-Search your knowledge for YouTube videos that teach "${topicName}" at Nigerian secondary school level (${examContext}).
+Recommend 3 to 5 YouTube videos that teach "${topicName}" at Nigerian secondary school level.
 
-For each video provide:
-- Title
-- Channel name
-- URL (if known, otherwise say "Search YouTube for: [search query]")
-- Why it is relevant to these objectives
-- Which objectives it covers
+For each video:
+- **Title** — exact or likely title
+- **Channel** — channel name
+- **Search query** — what to search on YouTube to find it
+- **Why relevant** — which objectives it covers and why it helps
+- **Caution** — any parts the builder should skip or verify
 
-List 3 to 5 videos. Prioritise Nigerian teachers and African educational channels where possible.
+Prioritise Nigerian educators, African educational channels, and channels known for ${examContext} preparation. If you are confident in a URL, include it. Otherwise give a precise search query.
 
-Note: The coordinator will watch these videos and paste the transcripts manually. You are only recommending here.`)
-  } else {
-    sections.push(`---
-## SECTION 2: YOUTUBE TRANSCRIPT
-✅ Already provided. No action needed for this section.`)
-  }
+After watching these videos, the coordinator will paste the transcript into the materials editor manually.
 
-  // PAST QUESTIONS section
-  if (!hasPastQuestions) {
-    sections.push(`---
+` : ''}${!hasPastQuestions ? `
 ## SECTION 3: PAST EXAM QUESTIONS
 
-Generate exam questions for "${topicName}" modelled on real ${examContext} exam patterns.
+Generate exam questions for "${topicName}" modelled on real ${examContext} question patterns.
 
-${isWAEC ? `For WAEC:
-- 2 essay questions (10 marks each)
-- 3 structured questions (5 marks each)
-- Label each question with the objective it tests` : ''}
+${isJAMB ? `**JAMB Questions (Multiple Choice)**
+Generate 15 multiple choice questions (options A–D).
+- Mark the correct answer with ✓
+- Write a one-line explanation for each correct answer
+- Tag each question with the objective number it tests` : ''}
 
-${isJAMB ? `For JAMB:
-- 10 multiple choice questions (A, B, C, D)
-- Mark the correct answer with an asterisk (*)
-- Include a brief explanation for why the correct answer is right
-- Label each question with the objective it tests` : ''}
+${isWAEC ? `**WAEC Questions**
+Generate:
+- 3 essay questions (10 marks each) with marking scheme bullet points
+- 4 structured questions (5 marks each) with model answers
+- Tag each question with the objective number it tests` : ''}
 
 ${!isWAEC && !isJAMB ? `Generate:
-- 5 multiple choice questions (A, B, C, D) with answers marked
-- 3 short answer questions with model answers` : ''}
+- 10 multiple choice questions (A–D) with answers marked
+- 4 short answer questions with model answers
+- Tag each with the objective it tests` : ''}
 
-Do not make up obscure facts. Base all questions on the objectives above.`)
-  } else {
-    sections.push(`---
-## SECTION 3: PAST QUESTIONS
-✅ Already provided. No action needed for this section.`)
-  }
+Base all questions strictly on the objectives. Do not introduce content outside the scope above.
 
-  // EXTRA NOTES section
-  if (!hasExtra) {
-    sections.push(`---
-## SECTION 4: EXTRA NOTES
+` : ''}${!hasExtra ? `
+## SECTION 4: EXAM TRAPS AND QUICK NOTES
 
-Write concise exam-focused notes for "${topicName}". This section is for what students need to score marks, not just understand.
+Write a sharp, punchy exam-focused notes section. This is NOT a repeat of the textbook — it is what students need to score marks.
 
 Include:
-- Common exam traps and misconceptions students fall into
-- Key distinctions examiners test (e.g. "students confuse X with Y")
-- Mnemonics or memory aids for lists and sequences
-- Keywords and phrases that score marks in WAEC answers
-- Any facts that appear repeatedly in past exams
+- The 3 to 5 most common mistakes students make on this topic in ${examContext} exams
+- Key distinctions examiners test (things students typically confuse)
+- Mnemonics or memory aids for any lists, sequences, or classifications
+- Power phrases — exact wording that scores marks in WAEC essay answers
+- Any facts that appear repeatedly across multiple years of past questions
 
-Keep this section short and punchy — bullet points are fine here.`)
-  } else {
-    sections.push(`---
-## SECTION 4: EXTRA NOTES
-✅ Already provided. No action needed for this section.`)
-  }
+Keep it concise. Bullet points are fine here.
 
-  return sections.join('\n\n')
+` : ''}---
+
+Output all sections above in sequence, using the exact section headings. Use markdown throughout. Do not add commentary outside the sections.`
 }
 
 export default function MaterialsEditor({
@@ -226,11 +214,10 @@ export default function MaterialsEditor({
     ...(typeof initialValue === 'object' && initialValue !== null ? initialValue : {}),
   })
 
-  const [open,    setOpen]    = useState<Record<string, boolean>>({ textbook: true })
-  const [saving,  setSaving]  = useState(false)
-  const [saved,   setSaved]   = useState(false)
-  const [copied,  setCopied]  = useState(false)
-  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [open,   setOpen]   = useState<Record<string, boolean>>({ textbook: true })
+  const [saving, setSaving] = useState(false)
+  const [saved,  setSaved]  = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const update = (key: keyof Materials, value: string) => {
     setMaterials(prev => ({ ...prev, [key]: value }))
@@ -248,27 +235,18 @@ export default function MaterialsEditor({
       .from('topics')
       .update({ materials })
       .eq('id', topicId)
-    if (error) { console.error('Materials save error:', error.message); setSaving(false); return }
+    if (error) {
+      console.error('Materials save error:', error.message)
+      setSaving(false)
+      return
+    }
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
-  const needsBatch = objectives.length > 5
-
   const handleCopyPrompt = () => {
-    if (needsBatch) {
-      setShowBatchModal(true)
-    } else {
-      const prompt = buildPrompt(topicName, subjectName, examNames, objectives, materials, null)
-      navigator.clipboard.writeText(prompt)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
-  const handleCopyBatch = (batch: 1 | 2) => {
-    const prompt = buildPrompt(topicName, subjectName, examNames, objectives, materials, batch)
+    const prompt = buildPrompt(topicName, subjectName, examNames, objectives, materials)
     navigator.clipboard.writeText(prompt)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -330,8 +308,11 @@ export default function MaterialsEditor({
             onClick={handleCopyPrompt}
             className="flex items-center gap-1.5 text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded hover:border-gray-400 transition-colors"
           >
-            {copied ? <Check size={11} className="text-green-600" /> : <Copy size={11} />}
-            {copied ? 'Copied' : needsBatch ? 'Copy prompt (batched)' : 'Copy prompt'}
+            {copied
+              ? <Check size={11} className="text-green-600" />
+              : <Copy size={11} />
+            }
+            {copied ? 'Copied' : 'Copy prompt'}
           </button>
           {saved && <span className="text-xs text-green-600">Saved</span>}
           <button
@@ -343,44 +324,6 @@ export default function MaterialsEditor({
           </button>
         </div>
       </div>
-
-      {/* Batch modal */}
-      {showBatchModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white border border-gray-200 rounded-lg p-6 w-full max-w-sm shadow-xl">
-            <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-900 mb-1">
-              Batched Prompt
-            </h2>
-            <p className="text-xs text-gray-400 mb-5 leading-relaxed">
-              This topic has {objectives.length} objectives — too large for one prompt. Copy Batch 1 first, paste into ChatGPT, wait for it to acknowledge. Then copy Batch 2 and paste in the same chat.
-            </p>
-
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => handleCopyBatch(1)}
-                className="w-full flex items-center justify-between text-xs bg-gray-900 text-white px-4 py-3 rounded hover:bg-gray-700 transition-colors"
-              >
-                <span>Copy Batch 1 — Context</span>
-                <Copy size={11} />
-              </button>
-              <button
-                onClick={() => handleCopyBatch(2)}
-                className="w-full flex items-center justify-between text-xs border border-gray-200 text-gray-700 px-4 py-3 rounded hover:border-gray-400 transition-colors"
-              >
-                <span>Copy Batch 2 — Generate output</span>
-                <Copy size={11} />
-              </button>
-            </div>
-
-            <button
-              onClick={() => setShowBatchModal(false)}
-              className="mt-4 w-full text-xs text-gray-400 hover:text-gray-700 transition-colors py-2"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
