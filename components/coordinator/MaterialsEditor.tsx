@@ -64,134 +64,161 @@ function buildPrompt(
   const isJAMB = examNames.some(e => e.toLowerCase().includes('jamb'))
 
   const examStyle = isWAEC && isJAMB
-    ? 'Both WAEC (essay/structured) and JAMB (multiple choice) exam styles apply.'
-    : isWAEC ? 'WAEC exam style — essay and structured questions.'
-    : isJAMB ? 'JAMB exam style — multiple choice only.'
-    : 'Nigerian secondary school exam style.'
+    ? 'Both WAEC (essay/structured) and JAMB (multiple choice)'
+    : isWAEC ? 'WAEC (essay and structured questions)'
+    : isJAMB ? 'JAMB (multiple choice)'
+    : 'Nigerian secondary school'
 
   const objectiveLines = objectives.length > 0
     ? objectives.map((o, i) => `${i + 1}. ${o.text}${o.examName ? ` [${o.examName}]` : ''}`).join('\n')
-    : 'No objectives set yet — use your knowledge of this topic for this exam level.'
+    : 'No objectives set yet.'
 
   const hasTextbook      = !!materials.textbook?.trim()
   const hasTranscript    = !!materials.transcript?.trim()
   const hasPastQuestions = !!materials.past_questions?.trim()
   const hasExtra         = !!materials.extra?.trim()
 
-  const skipped = [
-    hasTextbook      && 'Textbook Notes',
-    hasTranscript    && 'YouTube Recommendations',
-    hasPastQuestions && 'Past Questions',
-    hasExtra         && 'Extra Notes',
-  ].filter(Boolean)
-
-  const needed = [
+  const needed: string[] = [
     !hasTextbook      && 'Textbook Notes',
-    !hasTranscript    && 'YouTube Recommendations',
+    !hasTranscript    && 'YouTube Transcript',
     !hasPastQuestions && 'Past Questions',
     !hasExtra         && 'Extra Notes',
-  ].filter(Boolean)
+  ].filter(Boolean) as string[]
 
   if (needed.length === 0) {
     return `All materials for "${topicName}" are already filled. Nothing to generate.`
   }
 
-  return `You are a senior ${examContext} curriculum specialist and subject matter expert. Your task is to produce high-quality reference materials for a course on the following topic.
+  const textbookPrompt = `---
+TEXTBOOK SUB-CHAT PROMPT
+Open a new chat and paste exactly this:
 
----
+"You are a ${examStyle} curriculum writer. Write comprehensive textbook-style notes on the topic: ${topicName} (${subjectName}).
+
+The notes must cover these learning objectives:
+${objectiveLines}
+
+Rules:
+- Write in flowing prose like a real textbook — no bullet points
+- Use markdown headings to organise sections
+- Define every key term on first use
+- Explain concepts with examples
+- Appropriate level: Nigerian SS1–SS3 students
+- Do not include exam questions or tips — textbook content only
+- End with a short summary paragraph
+
+Output in a single markdown code block."
+
+Once you have the output, paste it back here for review.`
+
+  const transcriptPrompt = `---
+YOUTUBE SUB-CHAT PROMPT
+Open a new chat and paste exactly this:
+
+"Search YouTube for videos teaching: ${topicName} (${subjectName}) at Nigerian secondary school level for ${examStyle} preparation.
+
+List 4 videos with:
+- Title
+- Channel name
+- Direct URL or search query to find it
+- Which of these objectives it covers: ${objectives.map((o, i) => `(${i + 1}) ${o.text}`).join('; ')}
+- Timestamp of the most relevant section if known
+
+Prioritise Nigerian educators and African channels. Do not generate content — only recommend real videos the user can watch and transcribe."
+
+Watch the most relevant video, get the transcript (use YouTube's transcript feature or a tool like tactiq.io), and paste it back here for review.`
+
+  const pastQuestionsPrompt = `---
+PAST QUESTIONS SUB-CHAT PROMPT
+Open a new chat and paste exactly this:
+
+"Generate ${examStyle} exam questions for: ${topicName} (${subjectName}).
+
+Base all questions strictly on these objectives:
+${objectiveLines}
+
+${isJAMB ? `Format — JAMB style:
+- 15 multiple choice questions (A, B, C, D)
+- Mark correct answer with ✓
+- One-line explanation per answer
+- Label which objective each question tests` : ''}
+${isWAEC ? `Format — WAEC style:
+- 3 essay questions (10 marks each) with marking scheme
+- 4 structured questions (5 marks each) with model answers
+- Label which objective each question tests` : ''}
+${!isWAEC && !isJAMB ? `Format:
+- 10 multiple choice questions (A–D) with answers
+- 4 short answer questions with model answers
+- Label which objective each question tests` : ''}
+
+Do not introduce any content outside the objectives above."
+
+Paste the output back here for review.`
+
+  const extraPrompt = `---
+EXTRA NOTES SUB-CHAT PROMPT
+Open a new chat and paste exactly this:
+
+"Write concise exam-focused revision notes for: ${topicName} (${subjectName}) — ${examStyle}.
+
+Cover only what students need to score marks. Based on these objectives:
+${objectiveLines}
+
+Include:
+- Top 3–5 mistakes students make on this topic in exams
+- Key distinctions examiners test (what students confuse)
+- Mnemonics for any lists or sequences
+- Power phrases that score marks in ${isWAEC ? 'WAEC essay' : 'exam'} answers
+- Facts that appear repeatedly in past papers
+
+Bullet points only. No prose. No repetition of textbook content."
+
+Paste the output back here for review.`
+
+  const sections = [
+    !hasTextbook      && textbookPrompt,
+    !hasTranscript    && transcriptPrompt,
+    !hasPastQuestions && pastQuestionsPrompt,
+    !hasExtra         && extraPrompt,
+  ].filter(Boolean).join('\n\n')
+
+  return `You are the materials coordinator for a KLASS Studio course. Your job is NOT to generate content yourself. Your job is to orchestrate the collection of high-quality materials for this topic and review each piece against the learning objectives before approving it.
 
 ## TOPIC: ${topicName}
 ## SUBJECT: ${subjectName}
-## EXAM CONTEXT: ${examContext}
-## EXAM STYLE: ${examStyle}
-
----
+## EXAM: ${examStyle}
 
 ## LEARNING OBJECTIVES
-Students must be able to:
 ${objectiveLines}
 
+## QUALITY FILTER
+Every piece of material you receive must be checked against the objectives above. When reviewing:
+- Does it cover all the objectives it should?
+- Is the level appropriate for Nigerian SS1–SS3?
+- Is it accurate and exam-relevant?
+- Does it stay within scope — no irrelevant content?
+
+If a piece fails any of these checks, tell the user exactly what is wrong and what to ask the sub-chat to fix.
+
 ---
 
-## YOUR TASK
+## WHAT WE NEED
 
-Produce the following materials in one response, clearly separated by the section headings below. Every section must directly serve the objectives listed above — do not stray outside their scope.
+The following materials are missing and must be collected. Work through them one at a time. Do not move to the next section until the current one is approved.
 
-${skipped.length > 0 ? `The following sections are already filled and do NOT need to be produced:\n${(skipped as string[]).map(s => `- ${s}`).join('\n')}\n` : ''}Think deeply. Draw on your full knowledge of ${subjectName} at ${examContext} level. Be comprehensive but focused. Everything must be accurate, pedagogically sound, and exam-relevant.
+${sections}
 
 ---
-${!hasTextbook ? `
-## SECTION 1: TEXTBOOK NOTES
 
-Write comprehensive, well-structured textbook notes covering every objective above. This is the primary reference material builders will use to create the course.
+## HOW TO PROCEED
 
-Requirements:
-- Prose paragraphs, not bullet points — write like a textbook
-- Use markdown headings to organise by sub-topic or concept
-- Define every key term clearly on first use
-- Explain the why and the how, not just the what
-- Include worked examples where relevant
-- Cover every objective — do not skip any
-- Appropriate depth for SS1–SS3 Nigerian secondary school students
-- End with a one-paragraph summary of the topic
+Start with the first missing section above. Give the user the sub-chat prompt, wait for them to paste the result back, review it against the objectives, and either:
+- Say APPROVED and move to the next section, or
+- Say NEEDS REVISION with specific feedback on what to fix
 
-` : ''}${!hasTranscript ? `
-## SECTION 2: YOUTUBE VIDEO RECOMMENDATIONS
+When all sections are approved, summarise everything that was collected and confirm the materials are ready to paste into KLASS Studio.
 
-Recommend 3 to 5 YouTube videos that teach "${topicName}" at Nigerian secondary school level.
-
-For each video:
-- **Title** — exact or likely title
-- **Channel** — channel name
-- **Search query** — what to search on YouTube to find it
-- **Why relevant** — which objectives it covers and why it helps
-- **Caution** — any parts the builder should skip or verify
-
-Prioritise Nigerian educators, African educational channels, and channels known for ${examContext} preparation. If you are confident in a URL, include it. Otherwise give a precise search query.
-
-After watching these videos, the coordinator will paste the transcript into the materials editor manually.
-
-` : ''}${!hasPastQuestions ? `
-## SECTION 3: PAST EXAM QUESTIONS
-
-Generate exam questions for "${topicName}" modelled on real ${examContext} question patterns.
-
-${isJAMB ? `**JAMB Questions (Multiple Choice)**
-Generate 15 multiple choice questions (options A–D).
-- Mark the correct answer with ✓
-- Write a one-line explanation for each correct answer
-- Tag each question with the objective number it tests` : ''}
-
-${isWAEC ? `**WAEC Questions**
-Generate:
-- 3 essay questions (10 marks each) with marking scheme bullet points
-- 4 structured questions (5 marks each) with model answers
-- Tag each question with the objective number it tests` : ''}
-
-${!isWAEC && !isJAMB ? `Generate:
-- 10 multiple choice questions (A–D) with answers marked
-- 4 short answer questions with model answers
-- Tag each with the objective it tests` : ''}
-
-Base all questions strictly on the objectives. Do not introduce content outside the scope above.
-
-` : ''}${!hasExtra ? `
-## SECTION 4: EXAM TRAPS AND QUICK NOTES
-
-Write a sharp, punchy exam-focused notes section. This is NOT a repeat of the textbook — it is what students need to score marks.
-
-Include:
-- The 3 to 5 most common mistakes students make on this topic in ${examContext} exams
-- Key distinctions examiners test (things students typically confuse)
-- Mnemonics or memory aids for any lists, sequences, or classifications
-- Power phrases — exact wording that scores marks in WAEC essay answers
-- Any facts that appear repeatedly across multiple years of past questions
-
-Keep it concise. Bullet points are fine here.
-
-` : ''}---
-
-Output all sections above in sequence, using the exact section headings. Use markdown throughout. Do not add commentary outside the sections.`
+Begin now — give the user the first sub-chat prompt.`
 }
 
 export default function MaterialsEditor({
